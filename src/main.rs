@@ -2,6 +2,9 @@
 extern crate num;
 extern crate crossbeam;
 extern crate base64;
+extern crate iron;
+#[macro_use] extern crate mime;
+
 use num::Complex;
 use std::str::FromStr;
 
@@ -10,6 +13,9 @@ use image::ColorType;
 use image::png::PNGEncoder;
 use std::fs::File;
 use std::io::Write;
+
+use iron::prelude::*;
+use iron::status;
 
 fn parse_pair<T: FromStr>(s: &str, separator: char) -> Option<(T,T)> {
     match s.find(separator) {
@@ -129,18 +135,10 @@ fn write_bytes(pixels: &[u8], bounds: (usize, usize))
     Ok(bytes)
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() != 5 { 
-        writeln!(std::io::stderr(), "Usage: mandlebrot FILE PIXELS UPPERLEFT LOWERRIGHT").unwrap();
-        writeln!(std::io::stderr(), "Example {} mandel.png 1000x750 -1.20,0.35 -1,0.2", args[0]).unwrap();
-        std::process::exit(1);
-    }
-
-    let bounds = parse_pair(&args[2], 'x').expect("error parsing dimensions");
-    let upper_left = parse_complex(&args[3]).expect("error parsing upperleft");
-    let lower_right = parse_complex(&args[4]).expect("error parsing upperright");
-    let mut pixels = vec![0; bounds.0 * bounds.1];
+fn base64Fractal(upper_left: Complex<f64>, lower_right: Complex<f64>, bounds: (usize,usize))
+    -> String
+{
+   let mut pixels = vec![0; bounds.0 * bounds.1];
     let threads = 8;
     let rows_per_band = bounds.1 / threads + 1;
 
@@ -165,5 +163,40 @@ fn main() {
     //render(&mut pixels, bounds, upper_left, lower_right);
     //write_image(&args[1], &pixels, bounds).expect("failed to write png");
     let bytes = write_bytes(&pixels, bounds).expect("failed to write png");
-    writeln!(std::io::stdout(), "data:image/png;base64,{}", base64::encode(&bytes)).unwrap();
+
+    format!("data:image/png;base64,{}", base64::encode(&bytes))
+}
+
+fn get_form(_request: &mut Request) -> IronResult<Response> {
+    let mut response = Response::new();
+
+    response.set_mut(status::Ok);
+    response.set_mut(mime!(Text/Html; Charset=Utf8));
+    response.set_mut(r#"
+        <title>Mandelbrot Viewer</title>
+        <form action="/mandelbrot" method="post">
+            <input type="text" name="upperleft">
+            <input type="text" name="upperright">
+            <button type="submit">View Mandelbrot</button>
+        </form>
+        "#);
+
+    Ok(response)
+}
+
+fn main() {
+    // let args: Vec<String> = std::env::args().collect();
+    // if args.len() != 5 {
+    //     writeln!(std::io::stderr(), "Usage: mandlebrot FILE PIXELS UPPERLEFT LOWERRIGHT").unwrap();
+    //     writeln!(std::io::stderr(), "Example {} mandel.png 1000x750 -1.20,0.35 -1,0.2", args[0]).unwrap();
+    //     std::process::exit(1);
+    // }
+
+    // let bounds = parse_pair(&args[2], 'x').expect("error parsing dimensions");
+    // let upper_left = parse_complex(&args[3]).expect("error parsing upperleft");
+    // let lower_right = parse_complex(&args[4]).expect("error parsing upperright");
+
+    // let fractal_str = base64Fractal(upper_left, lower_right, bounds);
+    // writeln!(std::io::stdout(), "{}", fractal_str).unwrap();
+    Iron::new(get_form).http("localhost:3000").unwrap();
 }
