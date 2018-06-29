@@ -1,0 +1,8 @@
+[package]
+name = "mandelbrot-server"
+version = "0.1.0"
+authors = ["Matthew Gaudet <magaudet@ca.ibm.com>"]
+
+[dependencies]
+num = "0.1.27"
+image = "0.13.0" 
