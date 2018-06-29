@@ -1,6 +1,7 @@
 // Retyped from the Rust Book
 extern crate num;
 extern crate crossbeam;
+extern crate base64;
 use num::Complex;
 use std::str::FromStr;
 
@@ -108,13 +109,24 @@ fn render(pixels: &mut [u8],
     }
 }
 
-fn write_image(filename: &str, pixels: &[u8], bounds: (usize, usize)) 
-    -> Result<(), std::io::Error> 
+fn write_image(filename: &str, pixels: &[u8], bounds: (usize, usize))
+    -> Result<(), std::io::Error>
 {
     let output = File::create(filename)?;
     let encoder = PNGEncoder::new(output);
     encoder.encode(&pixels, bounds.0 as u32, bounds.1 as u32, ColorType::Gray(8))?;
     Ok(())
+}
+
+fn write_bytes(pixels: &[u8], bounds: (usize, usize))
+    -> Result<Vec<u8>, std::io::Error>
+{
+    let mut bytes : Vec<u8> = Vec::new();
+    {
+        let encoder = PNGEncoder::new(&mut bytes);
+        encoder.encode(&pixels, bounds.0 as u32, bounds.1 as u32, ColorType::Gray(8))?;
+    }
+    Ok(bytes)
 }
 
 fn main() {
@@ -151,5 +163,7 @@ fn main() {
 
 
     //render(&mut pixels, bounds, upper_left, lower_right);
-    write_image(&args[1], &pixels, bounds).expect("failed to write png");
+    //write_image(&args[1], &pixels, bounds).expect("failed to write png");
+    let bytes = write_bytes(&pixels, bounds).expect("failed to write png");
+    writeln!(std::io::stdout(), "data:image/png;base64,{}", base64::encode(&bytes)).unwrap();
 }
