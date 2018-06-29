@@ -1,9 +1,6 @@
 // Retyped from the Rust Book
 extern crate num;
 extern crate crossbeam;
-extern crate base64;
-extern crate iron;
-#[macro_use] extern crate mime;
 
 use num::Complex;
 use std::str::FromStr;
@@ -16,6 +13,14 @@ use std::io::Write;
 
 use iron::prelude::*;
 use iron::status;
+extern crate base64;
+extern crate iron;
+#[macro_use] extern crate mime;
+
+extern crate urlencoded;
+extern crate router;
+use urlencoded::UrlEncodedBody;
+use router::Router;
 
 fn parse_pair<T: FromStr>(s: &str, separator: char) -> Option<(T,T)> {
     match s.find(separator) {
@@ -176,7 +181,7 @@ fn get_form(_request: &mut Request) -> IronResult<Response> {
         <title>Mandelbrot Viewer</title>
         <form action="/mandelbrot" method="post">
             <input type="text" name="upperleft">
-            <input type="text" name="upperright">
+            <input type="text" name="lowerright">
             <button type="submit">View Mandelbrot</button>
         </form>
         "#);
@@ -184,19 +189,79 @@ fn get_form(_request: &mut Request) -> IronResult<Response> {
     Ok(response)
 }
 
+
+fn post_get_fractal(request: &mut Request) -> IronResult<Response> {
+    let mut response = Response::new();
+
+    let form_data = match request.get_ref::<UrlEncodedBody>() {
+        Err(e) => {
+            response.set_mut(status::BadRequest);
+            response.set_mut(format!("Error parsing form data: {:?}/n", e));
+            writeln!(std::io::stderr(), "Error parsing form data: {:?}/n", e).unwrap();
+            return Ok(response);
+        }
+        Ok(map) => map
+    };
+
+    let upper_left = parse_complex(match form_data.get("upperleft") {
+        None => {
+            response.set_mut(status::BadRequest);
+            response.set_mut(format!("form data has no upper_left parameter\n"));
+            writeln!(std::io::stderr(), "form data has no upper_left parameter\n").unwrap();
+            return Ok(response);
+        }
+        Some(upper_lefts) => &upper_lefts[0]
+    });
+
+    let lower_right = parse_complex(match form_data.get("lowerright") {
+        None => {
+            response.set_mut(status::BadRequest);
+            response.set_mut(format!("form data has no lower_right parameter\n"));
+            writeln!(std::io::stderr(), "form data has no lower_right parameter\n").unwrap();
+            return Ok(response);
+        }
+        Some(lower_rights) => &lower_rights[0]
+    });
+
+    let upper_left_unwrapped = match upper_left {
+        None => {
+            response.set_mut(status::BadRequest);
+            response.set_mut(format!("Could not parse upper_left parameter\n"));
+            writeln!(std::io::stderr(),"Could not parse upper_left parameter\n").unwrap();
+            return Ok(response);
+        }
+        Some(ul) => ul
+    };
+
+    let lower_right_unwrapped = match lower_right {
+        None => {
+            response.set_mut(status::BadRequest);
+            response.set_mut(format!("Could not parse lower_right parameter\n"));
+            writeln!(std::io::stderr(),"Could not parse lower_right parameter\n").unwrap();
+            return Ok(response);
+        }
+        Some(ul) => ul
+    };
+
+
+
+    let fractal_str = base64Fractal(upper_left_unwrapped, lower_right_unwrapped, (1000,1000));
+
+    response.set_mut(status::Ok);
+    response.set_mut(mime!(Text/Html; Charset=Utf8));
+    response.set_mut(format!(r#"
+        <title>Mandelbrot Viewer</title>
+        <img src="{}" />
+        "#, fractal_str));
+
+    Ok(response)
+}
+
 fn main() {
-    // let args: Vec<String> = std::env::args().collect();
-    // if args.len() != 5 {
-    //     writeln!(std::io::stderr(), "Usage: mandlebrot FILE PIXELS UPPERLEFT LOWERRIGHT").unwrap();
-    //     writeln!(std::io::stderr(), "Example {} mandel.png 1000x750 -1.20,0.35 -1,0.2", args[0]).unwrap();
-    //     std::process::exit(1);
-    // }
+    let mut router = Router::new();
 
-    // let bounds = parse_pair(&args[2], 'x').expect("error parsing dimensions");
-    // let upper_left = parse_complex(&args[3]).expect("error parsing upperleft");
-    // let lower_right = parse_complex(&args[4]).expect("error parsing upperright");
+    router.get("/", get_form, "root");
+    router.post("/mandelbrot", post_get_fractal, "mandelbrot");
 
-    // let fractal_str = base64Fractal(upper_left, lower_right, bounds);
-    // writeln!(std::io::stdout(), "{}", fractal_str).unwrap();
-    Iron::new(get_form).http("localhost:3000").unwrap();
+    Iron::new(router).http("localhost:3000").unwrap();
 }
